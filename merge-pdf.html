@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Merger</title>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f4f4f4;
+    }
+    .card {
+      background: #fff;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+      text-align: center;
+      width: 420px;
+    }
+    input[type="file"] {
+      margin: 15px 0;
+    }
+    button {
+      background: #2e86de;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #54a0ff;
+    }
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 15px;
+      color: #333;
+      font-size: 14px;
+    }
+    .error {
+      color: #e74c3c;
+    }
+    #downloadArea {
+      display: none;
+      margin-top: 15px;
+    }
+    a {
+      text-decoration: none;
+      font-weight: bold;
+      color: #27ae60;
+    }
+    #fileList {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #555;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>PDF Merger (up to 200MB, max 10 files)</h2>
+    <input type="file" id="pdfFiles" accept="application/pdf" multiple />
+    <br />
+    <button id="mergeBtn" disabled onclick="mergePdfs()">Merge PDFs</button>
+    <div id="fileList"></div>
+    <div id="status"></div>
+    <div id="downloadArea">
+      <a id="downloadLink" href="#" download="merged.pdf">Download merged.pdf</a>
+    </div>
+  </div>
+
+  <script>
+    const MAX_SIZE = 200 * 1024 * 1024; // 200 MB in bytes
+    const MAX_FILES = 10;
+
+    const fileInput = document.getElementById("pdfFiles");
+    const mergeBtn = document.getElementById("mergeBtn");
+    const fileList = document.getElementById("fileList");
+    const status = document.getElementById("status");
+    const downloadLink = document.getElementById("downloadLink");
+    const downloadArea = document.getElementById("downloadArea");
+
+    fileInput.addEventListener("change", () => {
+      downloadArea.style.display = "none";
+      status.textContent = "";
+      fileList.innerHTML = "";
+
+      const files = Array.from(fileInput.files || []);
+      if (files.length > MAX_FILES) {
+        fileInput.value = "";
+        fileList.innerHTML = "";
+        mergeBtn.disabled = true;
+        status.className = "error";
+        status.textContent =
+          "Too many files. Maximum " + MAX_FILES + " files allowed. Select only " + MAX_FILES + " files.";
+        return;
+      }
+      mergeBtn.disabled = files.length < 2;
+
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > MAX_SIZE) {
+        status.className = "error";
+        status.textContent =
+          "Total size exceeds 200MB (" + (totalSize / 1048576).toFixed(2) + "MB). Please remove some files.";
+        mergeBtn.disabled = true;
+        return;
+      }
+
+      files.forEach((f) => {
+        const el = document.createElement("div");
+        el.textContent = f.name + " — " + (f.size / 1048576).toFixed(2) + " MB";
+        fileList.appendChild(el);
+      });
+
+      status.className = "";
+      status.textContent = files.length + " file(s) selected. Total: " +
+        (totalSize / 1048576).toFixed(2) + " MB";
+    });
+
+    async function mergePdfs() {
+      const files = Array.from(fileInput.files || []);
+      if (files.length < 2) return;
+
+      mergeBtn.disabled = true;
+      status.className = "";
+      status.textContent = "Merging... Please wait.";
+
+      try {
+        const mergedPdf = await PDFLib.PDFDocument.create();
+
+        for (let i = 0; i < files.length; i++) {
+          status.textContent = "Merging " + (i + 1) + " of " + files.length + ": " + files[i].name;
+          const bytes = await files[i].arrayBuffer();
+          const srcDoc = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+          const pages = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
+          pages.forEach((p) => mergedPdf.addPage(p));
+        }
+
+        const mergedBytes = await mergedPdf.save();
+        const blob = new Blob([mergedBytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadArea.style.display = "block";
+
+        status.className = "";
+        status.textContent = "Merged " + files.length + " PDFs. Total " +
+          files.length + " files -> merged.pdf (" + (mergedBytes.length / 1048576).toFixed(2) + " MB)";
+      } catch (err) {
+        status.className = "error";
+        status.textContent = "Error: " + err.message;
+      } finally {
+        mergeBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
